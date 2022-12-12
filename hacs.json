@@ -1,0 +1,7 @@
+{
+  "name": "NWS Forecast Patch",
+  "homeassistant": "2022.12.1",
+  "content_in_root": false,
+  "domains": ["sensor"],
+  "render_readme": true
+}
