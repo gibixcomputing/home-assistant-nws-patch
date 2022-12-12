@@ -13,8 +13,10 @@ behavior.
 
 ## Minimum Supported HA Version
 At the time of writing **2022.12.1** is the minimum supported version.
-This is due to a change in the internal key names of the forecast
-dictionary (changing from `temperature` to `native_temperature`, et al).
+This is due to me only testing on this version and being really lazy
+about testing older versions. It _may_ work all the way back to 2022.07
+when the `native_temperature` et al. keys replaced the older
+`temperature` keys.
 
 ## HACS Support
 HACS support and availability is made on a best effort basis. I don't
