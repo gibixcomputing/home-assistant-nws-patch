@@ -45,14 +45,13 @@ NWS_STATE_ATTRIBUTE_PROP: Callable[[WeatherEntity], Any] | None = None
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Patch NWS forecast and state_attributes methods on setup."""
+    """Extract original properties to allow install/uninstall without restarting."""
 
     # remove unused arguments
     del hass
     del config
 
     _LOGGER.info("getting ready to patch NWSWeather")
-    from homeassistant.components.nws.const import DAYNIGHT
     from homeassistant.components.nws.weather import NWSWeather
 
     # only copy out the props if we haven't prior, preventing a potential mixup
@@ -64,6 +63,20 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     if NWS_STATE_ATTRIBUTE_PROP is None:
         NWS_STATE_ATTRIBUTE_PROP = NWSWeather.state_attributes
 
+    return NWS_FORECAST_PROP is not None and NWS_STATE_ATTRIBUTE_PROP is not None
+
+
+async def async_setup_entry(hass: HomeAssistant, config: ConfigType) -> bool:
+    """Patch the NWS forecast and state_attributes functions."""
+
+    # remove unused required parameters
+    del hass
+    del config
+
+    from homeassistant.components.nws.const import DAYNIGHT
+    from homeassistant.components.nws.weather import NWSWeather
+
+    # simple "class" to make typing a new property on the original class easier.
     class NWSWrap(NWSWeather):
         detailed_forecast: property
 
@@ -183,15 +196,6 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
 
     _LOGGER.info("NWSWeather patched :3")
 
-    return True
-
-
-async def async_setup_entry(hass: HomeAssistant, config: ConfigType) -> bool:
-    """Needed for config_flow to work, do nothing and return True."""
-
-    # remove unused required parameters
-    del hass
-    del config
     return True
 
 
