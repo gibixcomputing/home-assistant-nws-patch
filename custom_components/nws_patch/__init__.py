@@ -2,9 +2,9 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from datetime import datetime
+from datetime import datetime, timedelta
 import logging
-from typing import TYPE_CHECKING, Any, Callable, TypedDict, cast
+from typing import TYPE_CHECKING, Any, Callable, Coroutine, TypedDict, cast
 
 from homeassistant.components.weather import (
     ATTR_FORECAST_NATIVE_TEMP,
@@ -44,15 +44,15 @@ NWS_FORECAST_PROP: Callable[[NWSWeather], Any] | None = None
 NWS_STATE_ATTRIBUTE_PROP: Callable[[WeatherEntity], Any] | None = None
 
 
-async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
+async def async_setup(hass: HomeAssistant, config: ConfigType, tries: int = 1) -> bool:
     """Extract original properties to allow install/uninstall without restarting."""
 
-    # remove unused arguments
-    del hass
-    del config
-
     _LOGGER.info("getting ready to patch NWSWeather")
-    from homeassistant.components.nws.weather import NWSWeather
+    try:
+        from homeassistant.components.nws.weather import NWSWeather
+    except ModuleNotFoundError:
+        await retry_setup(hass, config, tries, async_setup)
+        return True
 
     # only copy out the props if we haven't prior, preventing a potential mixup
     global NWS_FORECAST_PROP
@@ -66,15 +66,17 @@ async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
     return NWS_FORECAST_PROP is not None and NWS_STATE_ATTRIBUTE_PROP is not None
 
 
-async def async_setup_entry(hass: HomeAssistant, config: ConfigType) -> bool:
+async def async_setup_entry(
+    hass: HomeAssistant, config: ConfigType, tries: int = 1
+) -> bool:
     """Patch the NWS forecast and state_attributes functions."""
 
-    # remove unused required parameters
-    del hass
-    del config
-
-    from homeassistant.components.nws.const import DAYNIGHT
-    from homeassistant.components.nws.weather import NWSWeather
+    try:
+        from homeassistant.components.nws.const import DAYNIGHT
+        from homeassistant.components.nws.weather import NWSWeather
+    except ModuleNotFoundError:
+        await retry_setup(hass, config, tries, async_setup_entry)
+        return True
 
     # simple "class" to make typing a new property on the original class easier.
     class NWSWrap(NWSWeather):
@@ -214,3 +216,30 @@ async def async_remove_entry(hass: HomeAssistant, config_entry: ConfigEntry) -> 
     NWSWeather.state_attributes = NWS_STATE_ATTRIBUTE_PROP  # type: ignore[assignment, misc]
 
     _LOGGER.info("removed nws forecast path :c")
+
+
+async def retry_setup(
+    hass: HomeAssistant,
+    config: ConfigType,
+    tries: int,
+    callback: Callable[[HomeAssistant, ConfigType, int], Coroutine[Any, Any, bool]],
+) -> None:
+    """Schedule a callback in 2 seconds in HA."""
+
+    if tries > 10:
+        _LOGGER.error(
+            "unable to patch nws component as pynws is not available after %d tries",
+            tries - 1,
+        )
+        return
+
+    tries = tries + 1
+    _LOGGER.info("pynws not installed yet. scheduling try %d", tries)
+
+    async def call_again(x: datetime) -> None:
+        del x
+        await callback(hass, config, tries)
+
+    from homeassistant.helpers.event import async_call_later
+
+    async_call_later(hass, timedelta(seconds=1), call_again)

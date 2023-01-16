@@ -1,7 +1,7 @@
 {
   "domain": "nws_patch",
   "name": "NWS Forecast Patch",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "integration_type": "service",
   "config_flow": true,
   "documentation": "https://gitlab.com/gibwar/home-assistant-nws-patch",
