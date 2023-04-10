@@ -150,39 +150,18 @@ async def async_setup_entry(
             _LOGGER.debug("bucket: %s: %d", day, len(fcasts))
             if len(fcasts) == 1:
                 tomorrow = True
-                updated = {**fcasts[0]}
-                title = "Day"
-                if not updated["daytime"]:
-                    title = "Night"
-                    updated[ATTR_FORECAST_NATIVE_TEMP_LOW] = updated[
-                        ATTR_FORECAST_NATIVE_TEMP
-                    ]
-                    del updated[ATTR_FORECAST_NATIVE_TEMP]
-
-                del updated["daytime"]
-                updated[
-                    "detailed_description"
-                ] = f"### {title}\n{cast(NWSForecast, updated)['detailed_description'].strip()}"
-
-                forecast.append(cast(NewForecast, updated))
-            elif len(fcasts) == 2:
-                daytime = [f for f in fcasts if f["daytime"]][0]
-                nighttime = [f for f in fcasts if not f["daytime"]][0]
-
-                merged = {**daytime}
-                merged[
-                    "detailed_description"
-                ] = f"### Day\n{daytime['detailed_description'].strip()}\n\n### Night\n{nighttime['detailed_description'].strip()}"
-
-                merged[ATTR_FORECAST_NATIVE_TEMP_LOW] = nighttime[
-                    ATTR_FORECAST_NATIVE_TEMP
-                ]
-                forecast.append(cast(NewForecast, merged))
-            else:
-                if fcasts:
-                    _LOGGER.warning("Day %s has more than 2 forecasts: %s", day, fcasts)
+                single_fcast = _convert_single_fcast(fcasts)
+                forecast.append(single_fcast)
+            elif len(fcasts) >= 2:
+                new_fcast = _merge_fcasts(fcasts)
+                if new_fcast:
+                    forecast.append(new_fcast)
                 else:
-                    _LOGGER.warning("Day %s has no forecasts", day)
+                    _LOGGER.warning(
+                        "Day %s is unable to merge multiple forecasts: %s", day, fcasts
+                    )
+            else:
+                _LOGGER.warning("Day %s has no forecasts: %s", day, fcasts)
 
         (first, second) = ("Tonight", "Tomorrow") if tomorrow else ("Today", "Tonight")
         description = f"### {first}\n"
@@ -264,3 +243,44 @@ async def retry_setup(
         await callback(hass, config, tries)
 
     async_call_later(hass, timedelta(seconds=1), call_again)
+
+
+def _merge_fcasts(fcasts: list[NWSForecast]) -> NewForecast | None:
+    try:
+        daycast = max(
+            (f for f in fcasts if f["daytime"]), key=lambda item: item["datetime"]
+        )
+        nightcast = max(
+            (f for f in fcasts if not f["daytime"]), key=lambda item: item["datetime"]
+        )
+    except ValueError:
+        return None
+
+    description = "### Day\n"
+    description += daycast["detailed_description"].strip()
+    description += "\n\n### Night\n"
+    description += nightcast["detailed_description"].strip()
+
+    merged = {**daycast}
+    merged["detailed_description"] = description
+    merged[ATTR_FORECAST_NATIVE_TEMP_LOW] = nightcast[ATTR_FORECAST_NATIVE_TEMP]
+
+    return cast(NewForecast, merged)
+
+
+def _convert_single_fcast(fcasts: list[NWSForecast]) -> NewForecast:
+    title = "Day"
+
+    new_cast = {**fcasts[0]}
+
+    if not new_cast["daytime"]:
+        title = "Night"
+        new_cast[ATTR_FORECAST_NATIVE_TEMP_LOW] = new_cast[ATTR_FORECAST_NATIVE_TEMP]
+        del new_cast[ATTR_FORECAST_NATIVE_TEMP]
+
+    description = f"### {title}\n"
+    description += cast(NWSForecast, new_cast)["detailed_description"].strip()
+    new_cast["detailed_description"] = description
+    del new_cast["daytime"]
+
+    return cast(NewForecast, new_cast)
