@@ -8,6 +8,7 @@ import logging
 from typing import TYPE_CHECKING, Any, TypedDict, cast
 
 from homeassistant.components.weather import (
+    ATTR_FORECAST_IS_DAYTIME,
     ATTR_FORECAST_NATIVE_TEMP,
     ATTR_FORECAST_NATIVE_TEMP_LOW,
 )
@@ -226,9 +227,9 @@ async def retry_setup(
     tries: int,
     callback: Callable[[HomeAssistant, ConfigType, int], Coroutine[Any, Any, bool]],
 ) -> None:
-    """Schedule a callback in 2 seconds in HA."""
+    """Schedule a callback every second for three mintues in HA."""
 
-    if tries > 10:
+    if tries > 180:
         _LOGGER.error(
             "Unable to patch nws component as pynws is not available after %d tries",
             tries - 1,
@@ -248,10 +249,10 @@ async def retry_setup(
 def _merge_fcasts(fcasts: list[NWSForecast]) -> NewForecast | None:
     try:
         daycast = max(
-            (f for f in fcasts if f["daytime"]), key=lambda item: item["datetime"]
+            (f for f in fcasts if f[ATTR_FORECAST_IS_DAYTIME]), key=lambda item: item[ATTR_FORECAST_IS_DAYTIME]
         )
         nightcast = max(
-            (f for f in fcasts if not f["daytime"]), key=lambda item: item["datetime"]
+            (f for f in fcasts if not f[ATTR_FORECAST_IS_DAYTIME]), key=lambda item: item[ATTR_FORECAST_IS_DAYTIME]
         )
     except ValueError:
         return None
@@ -273,7 +274,7 @@ def _convert_single_fcast(fcasts: list[NWSForecast]) -> NewForecast:
 
     new_cast = {**fcasts[0]}
 
-    if not new_cast["daytime"]:
+    if not new_cast[ATTR_FORECAST_IS_DAYTIME]:
         title = "Night"
         new_cast[ATTR_FORECAST_NATIVE_TEMP_LOW] = new_cast[ATTR_FORECAST_NATIVE_TEMP]
         del new_cast[ATTR_FORECAST_NATIVE_TEMP]
@@ -281,6 +282,6 @@ def _convert_single_fcast(fcasts: list[NWSForecast]) -> NewForecast:
     description = f"### {title}\n"
     description += cast(NWSForecast, new_cast)["detailed_description"].strip()
     new_cast["detailed_description"] = description
-    del new_cast["daytime"]
+    del new_cast[ATTR_FORECAST_IS_DAYTIME]
 
     return cast(NewForecast, new_cast)
